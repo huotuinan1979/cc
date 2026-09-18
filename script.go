@@ -15,7 +15,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
-	"unicode/utf16"
+	utf16pkg "unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -42,12 +42,12 @@ func readTextFile(path string) (string, error) {
 	if len(b) >= 2 && b[0] == 0xff && b[1] == 0xfe {
 		u := make([]uint16, 0, (len(b)-2)/2)
 		for i := 2; i+1 < len(b); i += 2 { u = append(u, binary.LittleEndian.Uint16(b[i:i+2])) }
-		return cleanScript(string(utf16.Decode(u))), nil
+		return cleanScript(string(utf16pkg.Decode(u))), nil
 	}
 	if len(b) >= 2 && b[0] == 0xfe && b[1] == 0xff {
 		u := make([]uint16, 0, (len(b)-2)/2)
 		for i := 2; i+1 < len(b); i += 2 { u = append(u, binary.BigEndian.Uint16(b[i:i+2])) }
-		return cleanScript(string(utf16.Decode(u))), nil
+		return cleanScript(string(utf16pkg.Decode(u))), nil
 	}
 	if len(b) >= 3 && bytes.Equal(b[:3], []byte{0xef,0xbb,0xbf}) { b = b[3:] }
 	if utf8.Valid(b) { return cleanScript(string(b)), nil }
