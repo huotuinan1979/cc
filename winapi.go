@@ -5,6 +5,7 @@ package main
 import (
 	"syscall"
 	"unsafe"
+	utf16pkg "unicode/utf16"
 )
 
 var (
@@ -13,6 +14,7 @@ var (
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	comdlg32 = syscall.NewLazyDLL("comdlg32.dll")
 	comctl32 = syscall.NewLazyDLL("comctl32.dll")
+	ole32    = syscall.NewLazyDLL("ole32.dll")
 
 	pRegisterClassExW   = user32.NewProc("RegisterClassExW")
 	pCreateWindowExW    = user32.NewProc("CreateWindowExW")
@@ -43,6 +45,8 @@ var (
 
 	pGetOpenFileNameW   = comdlg32.NewProc("GetOpenFileNameW")
 	pInitCommonControls = comctl32.NewProc("InitCommonControls")
+	pCoInitializeEx     = ole32.NewProc("CoInitializeEx")
+	pCoUninitialize     = ole32.NewProc("CoUninitialize")
 )
 
 const (
@@ -175,14 +179,19 @@ func send(hwnd uintptr, msg uint32, w, l uintptr) uintptr {
 func loword(v uintptr) uint16 { return uint16(v & 0xffff) }
 func hiword(v uintptr) uint16 { return uint16((v >> 16) & 0xffff) }
 
+func utf16MultiString(s string) []uint16 {
+	// Windows OPENFILENAME filters are NUL-separated pairs ending in a double NUL.
+	// syscall.StringToUTF16 rejects embedded NULs, so preserve them manually.
+	r := []rune(s)
+	u := utf16pkg.Encode(r)
+	if len(u) == 0 || u[len(u)-1] != 0 { u = append(u, 0) }
+	if len(u) < 2 || u[len(u)-2] != 0 { u = append(u, 0) }
+	return u
+}
+
 func chooseFile(owner uintptr, filter, title string) string {
 	buf := make([]uint16, 4096)
-	f := syscall.StringToUTF16(filter + "\x00")
-	for i := range f {
-		if f[i] == '\x00' && i+1 < len(f) && f[i+1] == '\x00' {
-			break
-		}
-	}
+	f := utf16MultiString(filter)
 	ofn := OPENFILENAME{
 		LStructSize: uint32(unsafe.Sizeof(OPENFILENAME{})),
 		HwndOwner: owner,
