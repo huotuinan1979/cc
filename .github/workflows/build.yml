@@ -87,11 +87,11 @@ jobs:
           Copy-Item "906_SubtitleTool_V1.4.1.exe" "dist\" -Force
           Copy-Item "runtime" "dist\runtime" -Recurse -Force
           @(
-            "玖零六影视字幕生成工具 V1.4.1",
-            "直接运行 906_SubtitleTool_V1.4.1.exe",
-            "runtime 文件夹必须与 EXE 保持同级，请勿删除。",
-            "软件运行时不联网下载识别组件。"
-          ) | Set-Content -Encoding UTF8 "dist\使用说明.txt"
+            "906 Subtitle Tool V1.4.1",
+            "Run 906_SubtitleTool_V1.4.1.exe.",
+            "Keep the runtime folder beside the EXE.",
+            "The application does not download recognition components at runtime."
+          ) | Set-Content -Encoding ascii "dist\README.txt"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
