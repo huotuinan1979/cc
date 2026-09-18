@@ -1,14 +1,122 @@
-name: Build Windows V1.4.2
+name: Build Windows V1.4.2 Verified
 
 on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: subtitle-v142-build
+  cancel-in-progress: true
+
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
-      - run: echo Verification workflow is being prepared.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: false
+      - name: Build pinned whisper.cpp without dynamic backends
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force runtime/whisper, licenses/whisper, verification | Out-Null
+          git init whisper-src
+          git -C whisper-src remote add origin https://github.com/ggml-org/whisper.cpp.git
+          git -C whisper-src fetch --depth 1 origin 927cfce34f31707e17f2bff35c349632fb9e2c3a
+          if ($LASTEXITCODE -ne 0) { throw 'Source fetch failed' }
+          git -C whisper-src checkout --detach FETCH_HEAD
+          if ((git -C whisper-src rev-parse HEAD).Trim() -ne '927cfce34f31707e17f2bff35c349632fb9e2c3a') { throw 'Source revision mismatch' }
+          cmake -S whisper-src -B whisper-build -G 'Visual Studio 17 2022' -A x64 -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DBUILD_SHARED_LIBS=OFF -DGGML_BACKEND_DL=OFF -DGGML_CPU_ALL_VARIANTS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DGGML_SSE42=OFF -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_BMI2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_AVX512=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_RPC=OFF -DWHISPER_CURL=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'Engine configure failed' }
+          cmake --build whisper-build --config Release --target whisper-cli --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'Engine build failed' }
+          Copy-Item whisper-build/bin/Release/whisper-cli.exe runtime/whisper/whisper-cli.exe
+          Copy-Item whisper-src/LICENSE licenses/whisper/LICENSE.txt
+          'whisper.cpp commit 927cfce34f31707e17f2bff35c349632fb9e2c3a; MSVC /MT; CPU static; no dynamic backends; no GPU; no CURL' | Set-Content -Encoding utf8 runtime/ENGINE_BUILD.txt
+      - name: Download and verify data model and fixed FFmpeg binary
+        run: |
+          $ErrorActionPreference = 'Stop'
+          curl.exe -L --fail --retry 3 --connect-timeout 30 --max-time 300 -o runtime/ggml-base-q5_1.bin 'https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base-q5_1.bin'
+          if ($LASTEXITCODE -ne 0) { throw 'Model download failed' }
+          if ((Get-FileHash runtime/ggml-base-q5_1.bin -Algorithm SHA256).Hash.ToLower() -ne '422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898') { throw 'Model digest mismatch' }
+          curl.exe -L --fail --retry 3 --connect-timeout 30 --max-time 300 -o ffmpeg.zip 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip'
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg download failed' }
+          if ((Get-FileHash ffmpeg.zip -Algorithm SHA256).Hash.ToLower() -ne 'dd03f71a6237e2dc4c58d0e26aca45f892cc122d64864a0ca9504420aa626a0f') { throw 'FFmpeg binary changed; refusing unverified update' }
+          Expand-Archive ffmpeg.zip ffmpeg-all -Force
+          $ff = Get-ChildItem ffmpeg-all -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (!$ff) { throw 'Missing FFmpeg binary' }
+          Copy-Item $ff.FullName runtime/ffmpeg.exe
+          New-Item -ItemType Directory -Force licenses/ffmpeg | Out-Null
+          Get-ChildItem ffmpeg-all -Recurse -File | Where-Object { $_.Name -match '(?i)license|copying' } | ForEach-Object { Copy-Item $_.FullName (Join-Path licenses/ffmpeg $_.Name) -Force }
+          & runtime/ffmpeg.exe -version | Set-Content -Encoding utf8 runtime/FFMPEG_VERSION.txt
+          @('whisper.cpp: https://github.com/ggml-org/whisper.cpp/tree/927cfce34f31707e17f2bff35c349632fb9e2c3a','Model: https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1','FFmpeg binary asset ID: 570334174, fixed SHA256 checked in build workflow','FFmpeg build scripts/source: https://github.com/BtbN/FFmpeg-Builds/tree/3e6685eda92f9288c15ac320139622dcedca09a4','No user audio, manuscript, or local paths are sent to the build service. Only public fixtures are used.') | Set-Content -Encoding utf8 runtime/THIRD_PARTY.txt
+      - name: Windows regression tests with actual offline inference
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go mod tidy
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency resolution failed' }
+          go mod verify
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency verification failed' }
+          $env:SUBTITLE_TEST_RUNTIME = (Resolve-Path runtime).Path
+          $env:SUBTITLE_TEST_AUDIO = (Resolve-Path whisper-src/samples/jfk.wav).Path
+          go test -v -count=1 -timeout 12m . 2>&1 | Tee-Object verification/windows-tests.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed; no release will be packaged' }
+          go vet . 2>&1 | Tee-Object verification/go-vet.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Static checks failed' }
+      - name: Build unchanged GUI and assemble portable folder
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Version label only; no layout or application-flow changes.
+          $main = [IO.File]::ReadAllText('main.go').Replace('玖零六影视字幕生成工具 V1.4"','玖零六影视字幕生成工具 V1.4.2"')
+          [IO.File]::WriteAllText('main.go', $main, [Text.UTF8Encoding]::new($false))
+          go build -trimpath -ldflags='-H=windowsgui -s -w' -o 906_SubtitleTool_V1.4.2.exe .
+          if ($LASTEXITCODE -ne 0) { throw 'GUI build failed' }
+          New-Item -ItemType Directory -Force dist, dist/source | Out-Null
+          Copy-Item 906_SubtitleTool_V1.4.2.exe dist/
+          Copy-Item runtime dist/runtime -Recurse
+          Copy-Item licenses dist/licenses -Recurse
+          Copy-Item verification dist/verification -Recurse
+          Copy-Item RELEASE_V1.4.2.txt dist/使用说明.txt
+          Copy-Item *.go, go.mod, go.sum dist/source/
+          Copy-Item .github/workflows/build.yml dist/source/build.yml
+          # Smoke-check that the GUI opens on Windows, then send an ordinary close.
+          $p = Start-Process -FilePath (Resolve-Path dist/906_SubtitleTool_V1.4.2.exe).Path -PassThru
+          Start-Sleep -Seconds 3
+          $p.Refresh()
+          if ($p.HasExited -or $p.MainWindowHandle -eq 0) { throw 'GUI did not create a window' }
+          $p.CloseMainWindow() | Out-Null
+          if (!$p.WaitForExit(5000)) { $p.Kill(); throw 'GUI close did not finish' }
+          'GUI window creation and normal close: PASS' | Set-Content -Encoding utf8 dist/verification/gui-smoke.txt
+          $root = (Resolve-Path dist).Path
+          Get-ChildItem dist -Recurse -File | Sort-Object FullName | ForEach-Object {
+            (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + '  ' + $_.FullName.Substring($root.Length+1).Replace('\','/')
+          } | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+      - name: Upload verified release
+        uses: actions/upload-artifact@v4
+        with:
+          name: 906_SubtitleTool_V1.4.2_Fix
+          path: dist/
+          retention-days: 7
+          compression-level: 6
+      - name: Upload failure diagnostics only
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 906_V1.4.2_build_diagnostics
+          path: verification/
+          if-no-files-found: ignore
+          retention-days: 3
