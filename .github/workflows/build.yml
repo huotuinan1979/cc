@@ -1,0 +1,58 @@
+name: Build Windows V1.4
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+
+      - name: Prepare embedded offline runtime
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force runtime | Out-Null
+          New-Item -ItemType Directory -Force runtime\whisper | Out-Null
+
+          Write-Host "Downloading whisper.cpp Windows x64..."
+          Invoke-WebRequest -Uri "https://github.com/ggml-org/whisper.cpp/releases/download/b5130/whisper-bin-x64.zip" -OutFile "whisper.zip"
+          Expand-Archive -Path "whisper.zip" -DestinationPath "runtime\whisper" -Force
+
+          Write-Host "Downloading multilingual base Q5_1 model..."
+          Invoke-WebRequest -Uri "https://github.com/w3xgroup/taskurio-models/releases/download/whisper-models-v1/ggml-base-q5_1.bin" -OutFile "runtime\ggml-base-q5_1.bin"
+          if ((Get-Item "runtime\ggml-base-q5_1.bin").Length -lt 50000000) { throw "Whisper model incomplete" }
+
+          Write-Host "Downloading FFmpeg..."
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip" -OutFile "ffmpeg.zip"
+          Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg-dist" -Force
+          $ff = Get-ChildItem "ffmpeg-dist" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+          if (-not $ff) { throw "ffmpeg.exe not found" }
+          Copy-Item $ff.FullName "runtime\ffmpeg.exe" -Force
+
+          Get-ChildItem runtime -Recurse | Select-Object FullName,Length
+
+      - name: Build Windows GUI executable
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          go build -trimpath -ldflags="-H=windowsgui -s -w" -o "玖零六影视字幕生成工具_V1.4.exe" .
+          if (-not (Test-Path "玖零六影视字幕生成工具_V1.4.exe")) { throw "EXE not generated" }
+          Get-Item "玖零六影视字幕生成工具_V1.4.exe" | Select-Object Name,Length
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: 玖零六影视字幕生成工具_V1.4
+          path: 玖零六影视字幕生成工具_V1.4.exe
+          compression-level: 6
+          retention-days: 7
