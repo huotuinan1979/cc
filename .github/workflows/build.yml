@@ -39,7 +39,7 @@ jobs:
           if (-not $ff) { throw "ffmpeg.exe not found" }
           Copy-Item $ff.FullName "runtime\ffmpeg.exe" -Force
 
-          Get-ChildItem runtime -Recurse | Select-Object FullName,Length
+          $checks = Get-ChildItem runtime -Recurse -File | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.FullName.Substring((Resolve-Path runtime).Path.Length+1).Replace("\\","/"))" }\n          $checks | Set-Content -Encoding ascii "runtime\\SHA256SUMS.txt"\n          @("906 Subtitle Tool offline runtime","whisper.cpp: https://github.com/ggml-org/whisper.cpp","Whisper model: https://huggingface.co/ggerganov/whisper.cpp","FFmpeg Windows build: https://github.com/BtbN/FFmpeg-Builds","All runtime components are bundled and are not downloaded at application runtime.") | Set-Content -Encoding UTF8 "runtime\\THIRD_PARTY.txt"\n          Get-ChildItem runtime -Recurse | Select-Object FullName,Length
 
       - name: Build Windows GUI executable
         shell: powershell
