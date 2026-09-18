@@ -4,9 +4,14 @@ package main
 
 import (
 	"encoding/csv"
-	"encoding/json"
-	"fmt"
+		"fmt"
 	"os"
+	"image"
+	"image/color"
+	"image/png"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/math/fixed"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -137,24 +142,49 @@ func exportCSV(subs []Subtitle, path string) error {
 func exportPNG(subs []Subtitle, dir string) error {
 	_ = os.RemoveAll(dir)
 	if err:=os.MkdirAll(dir,0755);err!=nil{return err}
-	data,err:=json.Marshal(subs);if err!=nil{return err}
-	jsonPath:=filepath.Join(os.TempDir(),"906_subtitles_png.json")
-	if err=os.WriteFile(jsonPath,data,0644);err!=nil{return err}
-	defer os.Remove(jsonPath)
-	ps := "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Drawing; "+
-		"$items=Get-Content -Raw -Encoding UTF8 '"+psQuote(jsonPath)+"'|ConvertFrom-Json; "+
-		"$out='"+psQuote(dir)+"'; $i=0; foreach($x in $items){$i++; "+
-		"$bmp=New-Object Drawing.Bitmap 1920,1080,[Drawing.Imaging.PixelFormat]::Format32bppArgb; "+
-		"$g=[Drawing.Graphics]::FromImage($bmp); $g.Clear([Drawing.Color]::Transparent); "+
-		"$g.TextRenderingHint=[Drawing.Text.TextRenderingHint]::AntiAliasGridFit; "+
-		"$font=New-Object Drawing.Font 'Microsoft YaHei',54,[Drawing.FontStyle]::Bold,[Drawing.GraphicsUnit]::Pixel; "+
-		"$brush=New-Object Drawing.SolidBrush ([Drawing.Color]::White); "+
-		"$sf=New-Object Drawing.StringFormat; $sf.Alignment=[Drawing.StringAlignment]::Center; $sf.LineAlignment=[Drawing.StringAlignment]::Center; "+
-		"$rect=New-Object Drawing.RectangleF 120,820,1680,180; $g.DrawString([string]$x.Text,$font,$brush,$rect,$sf); "+
-		"$p=Join-Path $out (('{0:D4}.png' -f $i)); $bmp.Save($p,[Drawing.Imaging.ImageFormat]::Png); "+
-		"$brush.Dispose();$font.Dispose();$g.Dispose();$bmp.Dispose(); "+
-		"Write-Output $i }"
-	cmdOut,err:=runPowerShellText(ps)
-	_ = cmdOut
-	return err
+
+	fontPath:=`C:\\Windows\\Fonts\\msyh.ttc`
+	data,err:=os.ReadFile(fontPath)
+	if err!=nil{
+		fontPath=`C:\\Windows\\Fonts\\simhei.ttf`
+		data,err=os.ReadFile(fontPath)
+		if err!=nil{return fmt.Errorf("无法读取系统中文字体")}
+	}
+
+	var face font.Face
+	if strings.HasSuffix(strings.ToLower(fontPath),".ttc"){
+		col,err:=opentype.ParseCollection(data)
+		if err!=nil{return err}
+		f,err:=col.Font(0)
+		if err!=nil{return err}
+		face,err=opentype.NewFace(f,&opentype.FaceOptions{Size:54,DPI:96,Hinting:font.HintingFull})
+		if err!=nil{return err}
+	}else{
+		f,err:=opentype.Parse(data)
+		if err!=nil{return err}
+		face,err=opentype.NewFace(f,&opentype.FaceOptions{Size:54,DPI:96,Hinting:font.HintingFull})
+		if err!=nil{return err}
+	}
+	defer face.Close()
+
+	for i,sub:=range subs{
+		img:=image.NewNRGBA(image.Rect(0,0,1920,1080))
+		d:=&font.Drawer{Dst:img,Src:image.NewUniform(color.NRGBA{255,255,255,255}),Face:face}
+		text:=sub.Text
+		advance:=d.MeasureString(text)
+		x:=(fixed.I(1920)-advance)/2
+		y:=fixed.I(930)
+		d.Dot=fixed.Point26_6{X:x,Y:y}
+		d.DrawString(text)
+
+		p:=filepath.Join(dir,fmt.Sprintf("%04d.png",i+1))
+		f,err:=os.Create(p)
+		if err!=nil{return err}
+		if err=png.Encode(f,img);err!=nil{f.Close();return err}
+		f.Close()
+		updateStatus(88+(i+1)*10/maxInt(1,len(subs)),"正在生成透明字幕图片…",false,"")
+	}
+	return nil
 }
+
+func maxInt(a,b int)int{if a>b{return a};return b}
