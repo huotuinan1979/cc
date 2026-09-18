@@ -8,8 +8,7 @@ import (
 
 func runJob(audio, script string, format int) (string, error) {
 	updateStatus(3, "正在检查本地组件…", false, "")
-	root, err := ensureRuntime()
-	if err != nil { return "", fmt.Errorf("本地组件准备失败：%v", err) }
+	root := runtimeRoot()
 
 	updateStatus(8, "正在读取解说词…", false, "")
 	text, err := readScript(script)
