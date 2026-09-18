@@ -15,6 +15,7 @@ var (
 	comdlg32 = syscall.NewLazyDLL("comdlg32.dll")
 	comctl32 = syscall.NewLazyDLL("comctl32.dll")
 	ole32    = syscall.NewLazyDLL("ole32.dll")
+	gdi32    = syscall.NewLazyDLL("gdi32.dll")
 
 	pRegisterClassExW   = user32.NewProc("RegisterClassExW")
 	pCreateWindowExW    = user32.NewProc("CreateWindowExW")
@@ -38,6 +39,7 @@ var (
 	pSetFocus           = user32.NewProc("SetFocus")
 
 	pGetModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
+	pMultiByteToWideChar = kernel32.NewProc("MultiByteToWideChar")
 
 	pDragAcceptFiles    = shell32.NewProc("DragAcceptFiles")
 	pDragQueryFileW     = shell32.NewProc("DragQueryFileW")
@@ -47,6 +49,16 @@ var (
 	pInitCommonControls = comctl32.NewProc("InitCommonControls")
 	pCoInitializeEx     = ole32.NewProc("CoInitializeEx")
 	pCoUninitialize     = ole32.NewProc("CoUninitialize")
+	pCreateCompatibleDC = gdi32.NewProc("CreateCompatibleDC")
+	pCreateDIBSection   = gdi32.NewProc("CreateDIBSection")
+	pSelectObject       = gdi32.NewProc("SelectObject")
+	pDeleteObject       = gdi32.NewProc("DeleteObject")
+	pDeleteDC           = gdi32.NewProc("DeleteDC")
+	pCreateFontW        = gdi32.NewProc("CreateFontW")
+	pSetBkMode          = gdi32.NewProc("SetBkMode")
+	pSetTextColor       = gdi32.NewProc("SetTextColor")
+	pGetTextExtentPoint32W = gdi32.NewProc("GetTextExtentPoint32W")
+	pTextOutW           = gdi32.NewProc("TextOutW")
 )
 
 const (
