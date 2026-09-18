@@ -110,16 +110,3 @@ func recognizeAudio(audio, root string) ([]RecSegment, error) {
 	return segs, nil
 }
 
-func findRecursive(root, name string) (string, error) {
-	var found string
-	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info == nil { return nil }
-		if !info.IsDir() && strings.EqualFold(info.Name(), name) {
-			found = path
-			return filepath.SkipAll
-		}
-		return nil
-	})
-	if found == "" { return "", fmt.Errorf("本地组件缺失：%s", name) }
-	return found, nil
-}
