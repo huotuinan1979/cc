@@ -17,7 +17,7 @@ jobs:
         with:
           go-version: '1.24.x'
 
-      - name: Prepare embedded offline runtime
+      - name: Prepare offline runtime
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -49,7 +49,7 @@ jobs:
           go build -trimpath -ldflags="-H=windowsgui -s -w" -o "subtitle_tool_v1.4.1.exe" .
           if (-not (Test-Path "subtitle_tool_v1.4.1.exe")) { throw "EXE not generated" }
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item "subtitle_tool_v1.4.1.exe" "dist\\玖零六影视字幕生成工具_V1.4.1.exe" -Force
+          Copy-Item "subtitle_tool_v1.4.1.exe" "dist\\906_SubtitleTool_V1.4.1.exe" -Force
           Copy-Item "runtime" "dist\\runtime" -Recurse -Force
           Get-ChildItem dist -Recurse | Select-Object FullName,Length
 
