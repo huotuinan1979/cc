@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -43,6 +44,10 @@ var (
 )
 
 func main() {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	pCoInitializeEx.Call(0, 0x2|0x4)
+	defer pCoUninitialize.Call()
 	pInitCommonControls.Call()
 	h, _, _ := pGetModuleHandleW.Call(0)
 	hInst = h
