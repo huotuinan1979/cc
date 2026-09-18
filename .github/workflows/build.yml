@@ -45,14 +45,14 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          go build -trimpath -ldflags="-H=windowsgui -s -w" -o "玖零六影视字幕生成工具_V1.4.exe" .
-          if (-not (Test-Path "玖零六影视字幕生成工具_V1.4.exe")) { throw "EXE not generated" }
-          Get-Item "玖零六影视字幕生成工具_V1.4.exe" | Select-Object Name,Length
+          go build -trimpath -ldflags="-H=windowsgui -s -w" -o "subtitle_tool_v1.4.exe" .
+          if (-not (Test-Path "subtitle_tool_v1.4.exe")) { throw "EXE not generated" }
+          Get-Item "subtitle_tool_v1.4.exe" | Select-Object Name,Length
 
       - name: Upload Windows executable
         uses: actions/upload-artifact@v4
         with:
-          name: 玖零六影视字幕生成工具_V1.4
-          path: 玖零六影视字幕生成工具_V1.4.exe
+          name: subtitle_tool_v1.4
+          path: subtitle_tool_v1.4.exe
           compression-level: 6
           retention-days: 7
